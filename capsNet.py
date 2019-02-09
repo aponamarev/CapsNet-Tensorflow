@@ -43,6 +43,7 @@ class CapsNet(object):
     def build_arch(self):
         with tf.variable_scope('Conv1_layer'):
             # Conv1, [batch_size, 20, 20, 256]
+            # kernel_size of 9 is extremely expensive
             conv1 = tf.contrib.layers.conv2d(self.X, num_outputs=256,
                                              kernel_size=9, stride=1,
                                              padding='VALID')
@@ -53,7 +54,7 @@ class CapsNet(object):
             primaryCaps = CapsLayer(num_outputs=32, vec_len=8, with_routing=False, layer_type='CONV')
             caps1 = primaryCaps(conv1, kernel_size=9, stride=2)
             assert caps1.get_shape() == [cfg.batch_size, 1152, 8, 1]
-
+            # Produced 1152 (6x6x32) capsules with a vector length of 8 (squashed by vector norm)
         # DigitCaps layer, return [batch_size, 10, 16, 1]
         with tf.variable_scope('DigitCaps_layer'):
             digitCaps = CapsLayer(num_outputs=10, vec_len=16, with_routing=True, layer_type='FC')
