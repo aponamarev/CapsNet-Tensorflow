@@ -10,6 +10,7 @@ import tensorflow as tf
 from config import cfg
 from utils import reduce_sum
 from utils import softmax
+from utils import get_shape
 
 
 epsilon = 1e-9
@@ -46,25 +47,8 @@ class CapsLayer(object):
             if not self.with_routing:
                 # the PrimaryCaps layer, a convolutional layer
                 # input: [batch_size, 20, 20, 256]
-                assert input.get_shape() == [cfg.batch_size, 20, 20, 256]
+                # assert input.get_shape() == [cfg.batch_size, 20, 20, 256]
 
-                '''
-                # version 1, computational expensive
-                capsules = []
-                for i in range(self.vec_len):
-                    # each capsule i: [batch_size, 6, 6, 32]
-                    with tf.variable_scope('ConvUnit_' + str(i)):
-                        caps_i = tf.contrib.layers.conv2d(input, self.num_outputs,
-                                                          self.kernel_size, self.stride,
-                                                          padding="VALID", activation_fn=None)
-                        caps_i = tf.reshape(caps_i, shape=(cfg.batch_size, -1, 1, 1))
-                        capsules.append(caps_i)
-                assert capsules[0].get_shape() == [cfg.batch_size, 1152, 1, 1]
-                capsules = tf.concat(capsules, axis=2)
-                '''
-
-                # version 2, equivalent to version 1 but higher computational
-                # efficiency.
                 # NOTE: I can't find out any words from the paper whether the
                 # PrimaryCap convolution does a ReLU activation or not before
                 # squashing function, but experiment show that using ReLU get a
@@ -77,9 +61,8 @@ class CapsLayer(object):
                 #                                    activation_fn=None)
                 capsules = tf.reshape(capsules, (cfg.batch_size, -1, self.vec_len, 1))
 
-                # [batch_size, 1152, 8, 1]
+                # return tensor with shape [batch_size, 1152, 8, 1]
                 capsules = squash(capsules)
-                assert capsules.get_shape() == [cfg.batch_size, 1152, 8, 1]
                 return(capsules)
 
         if self.layer_type == 'FC':
@@ -92,18 +75,20 @@ class CapsLayer(object):
                     # b_IJ: [batch_size, num_caps_l, num_caps_l_plus_1, 1, 1],
                     # about the reason of using 'batch_size', see issue #21
                     b_IJ = tf.constant(np.zeros([cfg.batch_size, input.shape[1].value, self.num_outputs, 1, 1], dtype=np.float32))
-                    capsules = routing(self.input, b_IJ)
+                    capsules = routing(self.input, b_IJ, num_outputs=self.num_outputs, num_dims=self.vec_len)
                     capsules = tf.squeeze(capsules, axis=1)
 
             return(capsules)
 
 
-def routing(input, b_IJ):
+def routing(input, b_IJ, num_outputs=10, num_dims=16):
     ''' The routing algorithm.
 
     Args:
         input: A Tensor with [batch_size, num_caps_l=1152, 1, length(u_i)=8, 1]
                shape, num_caps_l meaning the number of capsule in the layer l.
+        num_outputs: the number of output capsules.
+        num_dims: the number of dimensions for output capsule.
     Returns:
         A Tensor of shape [batch_size, num_caps_l_plus_1, length(v_j)=16, 1]
         representing the vector output `v_j` in the layer l+1
